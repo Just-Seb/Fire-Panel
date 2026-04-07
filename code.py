@@ -344,99 +344,95 @@ while True:
     needs_draw = False
 
     # 1. Control buttons (navigation / training / silence)
-    if not int_pin_control.value:
-        for p in CTRL_PINS:
-            is_low = not mcp_control.get_pin(p).value
+    # Polled directly every iteration — no interrupt gate needed.
+    for p in CTRL_PINS:
+        is_low = not mcp_control.get_pin(p).value
 
-            if is_low and not ctrl_pressed[p]:
-                if (now - ctrl_last_edge[p]) > 0.2:
-                    ctrl_pressed[p]   = True
-                    ctrl_last_edge[p] = now
+        if is_low and not ctrl_pressed[p]:
+            if (now - ctrl_last_edge[p]) > 0.2:
+                ctrl_pressed[p]   = True
+                ctrl_last_edge[p] = now
 
-                    name = CTRL_NAMES.get(p, str(p))
-                    print(f"CTRL PRESSED  pin={p} ({name})")
+                name = CTRL_NAMES.get(p, str(p))
+                print(f"CTRL PRESSED  pin={p} ({name})")
 
-                    if p == 13:         # UP
-                        menu.scroll_up()
+                if p == 13:         # UP
+                    menu.scroll_up()
+                    show_info  = False
+                    needs_draw = True
+                elif p == 12:       # DOWN
+                    menu.scroll_down()
+                    show_info  = False
+                    needs_draw = True
+                elif p == 9:        # RIGHT (secondary scroll down)
+                    menu.scroll_down()
+                    show_info  = False
+                    needs_draw = True
+                elif p == 10:       # ENTER
+                    show_info  = False
+                    menu.enter()
+                    needs_draw = True
+                elif p == 8:        # LEFT → back to main
+                    if menu.mode != "main":
+                        menu.back_to_main()
                         show_info  = False
                         needs_draw = True
-                    elif p == 12:       # DOWN
-                        menu.scroll_down()
-                        show_info  = False
-                        needs_draw = True
-                    elif p == 9:        # RIGHT (secondary scroll down)
-                        menu.scroll_down()
-                        show_info  = False
-                        needs_draw = True
-                    elif p == 10:       # ENTER
-                        show_info  = False
-                        menu.enter()
-                        needs_draw = True
-                    elif p == 8:        # LEFT → back to main
-                        if menu.mode != "main":
-                            menu.back_to_main()
-                            show_info  = False
-                            needs_draw = True
-                    elif p == 11:       # SILENCE
-                        buzzer_silenced = not buzzer_silenced
-                        if buzzer_silenced:
-                            buzzer.value = False
-                        print(f"  Buzzer {'silenced' if buzzer_silenced else 're-enabled'}")
-                    elif p == 15:       # EYE → toggle training mode
-                        training_mode = not training_mode
-                        print(f"  Training mode {'ON' if training_mode else 'OFF'}")
-                        needs_draw = True
+                elif p == 11:       # SILENCE
+                    buzzer_silenced = not buzzer_silenced
+                    if buzzer_silenced:
+                        buzzer.value = False
+                    print(f"  Buzzer {'silenced' if buzzer_silenced else 're-enabled'}")
+                elif p == 15:       # EYE → toggle training mode
+                    training_mode = not training_mode
+                    print(f"  Training mode {'ON' if training_mode else 'OFF'}")
+                    needs_draw = True
 
-            elif not is_low and ctrl_pressed[p]:
-                if (now - ctrl_last_edge[p]) > 0.2:
-                    ctrl_pressed[p]   = False
-                    ctrl_last_edge[p] = now
-                    name = CTRL_NAMES.get(p, str(p))
-                    print(f"CTRL RELEASED pin={p} ({name})")
-
-        mcp_control.clear_ints()
+        elif not is_low and ctrl_pressed[p]:
+            if (now - ctrl_last_edge[p]) > 0.2:
+                ctrl_pressed[p]   = False
+                ctrl_last_edge[p] = now
+                name = CTRL_NAMES.get(p, str(p))
+                print(f"CTRL RELEASED pin={p} ({name})")
 
     if needs_draw and not show_info:
         menu.draw()
 
     # 2. Zone buttons (room detectors / flows)
+    # Polled directly every iteration — no interrupt gate needed.
     for c in button_mcps:
-        if not c["int"].value:
-            for i in range(c["count"]):
-                is_low = not c["mcp"].get_pin(i).value
+        for i in range(c["count"]):
+            is_low = not c["mcp"].get_pin(i).value
 
-                if is_low and not c["pressed"][i]:
-                    if (now - c["last_edge"][i]) > 0.05:
-                        c["pressed"][i]   = True
-                        c["last_edge"][i] = now
+            if is_low and not c["pressed"][i]:
+                if (now - c["last_edge"][i]) > 0.05:
+                    c["pressed"][i]   = True
+                    c["last_edge"][i] = now
 
-                        physical = i + c["offset"]
-                        logical  = translation[physical]
+                    physical = i + c["offset"]
+                    logical  = translation[physical]
 
-                        if training_mode:
-                            # Cycle: NORMAL → ALARM → TROUBLE → NORMAL
-                            button_states[logical] = (button_states[logical] + 1) % 3
+                    if training_mode:
+                        # Cycle: NORMAL → ALARM → TROUBLE → NORMAL
+                        button_states[logical] = (button_states[logical] + 1) % 3
 
-                        state_str = STATE_NAMES[button_states[logical]]
-                        print(f"ZONE PRESSED  phys={physical} logical={logical}"
-                              f" state={state_str} room={room_csv[logical] or 'unnamed'}")
+                    state_str = STATE_NAMES[button_states[logical]]
+                    print(f"ZONE PRESSED  phys={physical} logical={logical}"
+                          f" state={state_str} room={room_csv[logical] or 'unnamed'}")
 
-                        show_info  = True
-                        info_drawn = False
-                        show_start = now
-                        show_btn   = logical
-                        show_state = button_states[logical]
-                        update_leds()
+                    show_info  = True
+                    info_drawn = False
+                    show_start = now
+                    show_btn   = logical
+                    show_state = button_states[logical]
+                    update_leds()
 
-                elif not is_low and c["pressed"][i]:
-                    if (now - c["last_edge"][i]) > 0.05:
-                        c["pressed"][i]   = False
-                        c["last_edge"][i] = now
-                        physical = i + c["offset"]
-                        logical  = translation[physical]
-                        print(f"ZONE RELEASED phys={physical} logical={logical}")
-
-            c["mcp"].clear_ints()
+            elif not is_low and c["pressed"][i]:
+                if (now - c["last_edge"][i]) > 0.05:
+                    c["pressed"][i]   = False
+                    c["last_edge"][i] = now
+                    physical = i + c["offset"]
+                    logical  = translation[physical]
+                    print(f"ZONE RELEASED phys={physical} logical={logical}")
 
     # 3. Info popup (shown for 3 s after a zone button press)
     if show_info:
