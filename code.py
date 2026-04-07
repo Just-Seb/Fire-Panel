@@ -7,9 +7,9 @@ from adafruit_mcp230xx.mcp23s17 import MCP23S17
 from DispDriver import LCD12864
 
 # ─── Display constants ──────────────────────────────────────────────────────
-CHAR_W   = 6        # pixels per character
-MAX_PX   = 120      # maximum content width in pixels
-MAX_CHARS = MAX_PX // CHAR_W  # 20 characters
+CHAR_W    = 8        # pixels per character (font is 8px wide)
+MAX_PX    = 120      # maximum content width in pixels
+MAX_CHARS = MAX_PX // CHAR_W  # 15 characters
 
 def trunc(s):
     """Clip string to MAX_CHARS so it stays within MAX_PX pixels."""
@@ -23,9 +23,8 @@ translation = [
     33, 55, 56, 48, 49, 50, 43, 44, 45, 51, 52, 53, 57, 58, 33
 ]
 
-# Zone names (truncated at display time via trunc()).
-# Note: some names exceed 20 chars and will be clipped on screen.
-# Shorten any entries here if you want the full name visible.
+# Zone names (truncated at display time via trunc() to 15 chars / 120px).
+# Shorten any entries here if you want the full name visible on screen.
 room_csv = [
     "FIRST FL GARAGE DETECTOR", "FIRST FL KITCHEN DETECTOR", "FIRST FL HALLWAY DETECTOR",
     "FIRST FL LIVING DETECTOR", "FIRST FL STAIRWELL DETECTOR", "FIRST FL ENTRY DETECTOR",
@@ -42,6 +41,9 @@ room_csv = [
 ]
 
 STATE_NAMES = {0: "NORMAL", 1: "ALARM", 2: "TROUBLE"}
+
+# Names used in debug prints
+CTRL_NAMES = {8: "LEFT", 9: "RIGHT", 10: "ENTER", 11: "SILENCE", 12: "DOWN", 13: "UP", 15: "EYE"}
 
 # ─── Global state ───────────────────────────────────────────────────────────
 button_states   = [0] * 60  # 0=normal, 1=alarm, 2=trouble
@@ -150,7 +152,7 @@ display.show()
 def room_label(idx):
     """Return truncated zone name, or 'Room N' if the zone has no name."""
     name = room_csv[idx] if idx < len(room_csv) else ""
-    return trunc(name) if name else f"Room {idx + 1}"
+    return trunc(name) if name else trunc(f"Room {idx + 1}")
 
 # ─── Menu system ─────────────────────────────────────────────────────────────
 # Modes:
@@ -161,12 +163,13 @@ def room_label(idx):
 #   clear    – confirm/cancel clear-all
 #
 # Controls (all short press only):
-#   UP   (pin 13) – scroll up
-#   DOWN (pin 12) – scroll down
-#   ENTER(pin 10) – select / confirm
-#   LEFT (pin  8) – back to main menu from any sub-menu
+#   UP      (pin 13) – scroll up
+#   DOWN    (pin 12) – scroll down
+#   RIGHT   (pin  9) – secondary scroll down
+#   ENTER   (pin 10) – select / confirm
+#   LEFT    (pin  8) – back to main menu from any sub-menu
 #   SILENCE (pin 11) – silence / re-enable buzzer
-#   EYE  (pin 15) – toggle training mode
+#   EYE     (pin 15) – toggle training mode
 
 class MenuSystem:
     def __init__(self, disp):
@@ -220,20 +223,25 @@ class MenuSystem:
         time.sleep(1.5)
 
     # ── Rendering ─────────────────────────────────────────────────────────
+    # All strings are kept to MAX_CHARS (15) or fewer so no line exceeds
+    # MAX_PX (120) pixels at CHAR_W (8) pixels per character.
     def draw(self):
         d   = self.display
         idx = self.idx
         d.fill(0)
 
         if self.mode == "main":
+            # "FIRE PANEL" = 10 chars = 80 px
             d.text("FIRE PANEL", 0, 0)
             if training_mode:
-                d.text("TRN", 102, 0)   # 102 + 3*6 = 120 px
+                # "TRN" starts at x=96: 96 + 3*8 = 120 px
+                d.text("TRN", 96, 0)
             n_al = button_states.count(1)
             n_tr = button_states.count(2)
+            # Max item width: "> Troubles: 60" = 14 chars = 112 px
             items = [
-                f"Alarm Rooms: {n_al}",
-                f"Trouble Rooms: {n_tr}",
+                f"Alarms: {n_al}",
+                f"Troubles: {n_tr}",
                 "All Rooms",
                 "Clear All",
             ]
@@ -241,7 +249,8 @@ class MenuSystem:
                 sel  = (i == idx)
                 line = trunc(f"> {item}" if sel else f"  {item}")
                 d.text(line, 0, 10 + i * 11, color=0 if sel else 1, bg=1 if sel else 0)
-            d.text("ENT:Sel  EYE:Train", 0, 55)
+            # Status bar: "ENT:Sel EYE:Trn" = 15 chars = 120 px
+            d.text("ENT:Sel EYE:Trn", 0, 55)
 
         elif self.mode in ("alarms", "troubles"):
             state_val = 1 if self.mode == "alarms" else 2
@@ -249,46 +258,49 @@ class MenuSystem:
             s_name    = "ALARM"    if self.mode == "alarms" else "TROUBLE"
             lst       = self._filtered(state_val)
 
+            # Title: max "TROUBLES" = 8 chars = 64 px; "TRN" at x=96
             d.text(title, 0, 0)
             if training_mode:
-                d.text("TRN", 102, 0)
-            if idx > 0:
-                d.text("^", 114, 0)   # 114 + 6 = 120 px
+                d.text("TRN", 96, 0)
+
             if not lst:
-                d.text(trunc(f"No active {title.lower()}"), 0, 24)
+                # "No alarms" / "No troubles" <= 11 chars = 88 px
+                d.text(f"No {title.lower()}", 0, 24)
             else:
                 zone = lst[idx]
-                d.text(trunc(f"Room {zone + 1}: {s_name}"), 0, 12)
+                # "Rm 60: TROUBLE" = 14 chars = 112 px
+                d.text(trunc(f"Rm {zone + 1}: {s_name}"), 0, 12)
                 d.text(room_label(zone), 0, 22)
-                d.text(trunc(f"{idx + 1} of {len(lst)}"), 0, 33)
-                if idx < len(lst) - 1:
-                    d.text("v", 114, 46)
-            d.text("L:Back  U/D:Scroll", 0, 55)
+                # "60 of 60" = 8 chars = 64 px
+                d.text(f"{idx + 1} of {len(lst)}", 0, 33)
+            # "L:Bk U/D:Scroll" = 15 chars = 120 px
+            d.text("L:Bk U/D:Scroll", 0, 55)
 
         elif self.mode == "buttons":
             d.text("ALL ROOMS", 0, 0)
             if training_mode:
-                d.text("TRN", 102, 0)
-            if idx > 0:
-                d.text("^", 114, 0)
+                d.text("TRN", 96, 0)
             state_name = STATE_NAMES[button_states[idx]]
-            d.text(trunc(f"Room {idx + 1}: {state_name}"), 0, 12)
+            # "Rm 60: TROUBLE" = 14 chars = 112 px
+            d.text(trunc(f"Rm {idx + 1}: {state_name}"), 0, 12)
             d.text(room_label(idx), 0, 22)
-            d.text(trunc(f"{idx + 1} of 60"), 0, 33)
-            if idx < 59:
-                d.text("v", 114, 46)
-            d.text("L:Back  U/D:Scroll", 0, 55)
+            # "60 of 60" = 8 chars = 64 px
+            d.text(f"{idx + 1} of 60", 0, 33)
+            d.text("L:Bk U/D:Scroll", 0, 55)
 
         elif self.mode == "clear":
             d.text("CLEAR ALL?", 0, 0)
-            d.text(trunc(f"Active Alarms: {button_states.count(1)}"),   0, 12)
-            d.text(trunc(f"Active Troubles: {button_states.count(2)}"), 0, 22)
+            # "Alarms: 60" = 10 chars = 80 px
+            d.text(f"Alarms: {button_states.count(1)}", 0, 12)
+            # "Troubles: 60" = 12 chars = 96 px
+            d.text(f"Troubles: {button_states.count(2)}", 0, 22)
             sel_yes = (idx == 0)
             d.text("> YES" if sel_yes     else "  YES", 0, 36,
                    color=0 if sel_yes     else 1, bg=1 if sel_yes     else 0)
             d.text("> NO"  if not sel_yes else "  NO",  0, 46,
                    color=0 if not sel_yes else 1, bg=1 if not sel_yes else 0)
-            d.text("L:Cancel  ENT:Sel", 0, 55)
+            # "L:Cancel ENT:OK" = 15 chars = 120 px
+            d.text("L:Cancel ENT:OK", 0, 55)
 
         d.show()
 
@@ -296,10 +308,10 @@ menu = MenuSystem(display)
 menu.draw()
 
 # ─── Control button startup sync ────────────────────────────────────────────
-CTRL_PINS      = [8, 9, 10, 11, 12, 13, 15]
-ctrl_pressed   = {p: False for p in CTRL_PINS}
+CTRL_PINS    = [8, 9, 10, 11, 12, 13, 15]
+ctrl_pressed = {p: False for p in CTRL_PINS}
 
-startup_time   = time.monotonic()
+startup_time = time.monotonic()
 
 print("Syncing hardware state...")
 for _ in range(2):
@@ -341,6 +353,9 @@ while True:
                     ctrl_pressed[p]   = True
                     ctrl_last_edge[p] = now
 
+                    name = CTRL_NAMES.get(p, str(p))
+                    print(f"CTRL PRESSED  pin={p} ({name})")
+
                     if p == 13:         # UP
                         menu.scroll_up()
                         show_info  = False
@@ -353,7 +368,7 @@ while True:
                         menu.scroll_down()
                         show_info  = False
                         needs_draw = True
-                    elif p == 10:       # ENTER (short press only)
+                    elif p == 10:       # ENTER
                         show_info  = False
                         menu.enter()
                         needs_draw = True
@@ -366,16 +381,18 @@ while True:
                         buzzer_silenced = not buzzer_silenced
                         if buzzer_silenced:
                             buzzer.value = False
-                        print(f"Buzzer {'silenced' if buzzer_silenced else 're-enabled'}")
+                        print(f"  Buzzer {'silenced' if buzzer_silenced else 're-enabled'}")
                     elif p == 15:       # EYE → toggle training mode
                         training_mode = not training_mode
-                        print(f"Training mode {'ON' if training_mode else 'OFF'}")
+                        print(f"  Training mode {'ON' if training_mode else 'OFF'}")
                         needs_draw = True
 
             elif not is_low and ctrl_pressed[p]:
                 if (now - ctrl_last_edge[p]) > 0.2:
                     ctrl_pressed[p]   = False
                     ctrl_last_edge[p] = now
+                    name = CTRL_NAMES.get(p, str(p))
+                    print(f"CTRL RELEASED pin={p} ({name})")
 
         mcp_control.clear_ints()
 
@@ -399,7 +416,10 @@ while True:
                         if training_mode:
                             # Cycle: NORMAL → ALARM → TROUBLE → NORMAL
                             button_states[logical] = (button_states[logical] + 1) % 3
-                            print(f"Zone {logical}: {STATE_NAMES[button_states[logical]]}")
+
+                        state_str = STATE_NAMES[button_states[logical]]
+                        print(f"ZONE PRESSED  phys={physical} logical={logical}"
+                              f" state={state_str} room={room_csv[logical] or 'unnamed'}")
 
                         show_info  = True
                         info_drawn = False
@@ -412,6 +432,9 @@ while True:
                     if (now - c["last_edge"][i]) > 0.05:
                         c["pressed"][i]   = False
                         c["last_edge"][i] = now
+                        physical = i + c["offset"]
+                        logical  = translation[physical]
+                        print(f"ZONE RELEASED phys={physical} logical={logical}")
 
             c["mcp"].clear_ints()
 
@@ -422,10 +445,12 @@ while True:
             menu.draw()
         elif not info_drawn:
             display.fill(0)
+            # "Room 60" = 7 chars = 56 px
             display.text(trunc(f"Room {show_btn + 1}"), 0, 0)
             if training_mode:
-                display.text("TRN", 102, 0)
+                display.text("TRN", 96, 0)
             display.text(room_label(show_btn), 0, 12)
+            # "State: TROUBLE" = 14 chars = 112 px
             display.text(trunc(f"State: {STATE_NAMES[show_state]}"), 0, 32)
             display.show()
             info_drawn = True
