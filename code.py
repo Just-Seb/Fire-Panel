@@ -307,27 +307,35 @@ class MenuSystem:
 menu = MenuSystem(display)
 menu.draw()
 
-# ─── Control button startup sync ────────────────────────────────────────────
+# ─── Control button startup ─────────────────────────────────────────────────
 CTRL_PINS    = [8, 9, 10, 11, 12, 13, 15]
-ctrl_pressed = {p: False for p in CTRL_PINS}
+# Initialise all pressed states to False — do NOT read from hardware here.
+# Reading hardware at startup can return garbage if the SPI bus is still
+# settling, which marks buttons as "already pressed" and blocks edge detection.
+ctrl_pressed   = {p: False for p in CTRL_PINS}
+for c in button_mcps:
+    c["pressed"] = [False] * c["count"]
 
-startup_time = time.monotonic()
-
-print("Syncing hardware state...")
-for _ in range(2):
-    for p in CTRL_PINS:
-        ctrl_pressed[p] = not mcp_control.get_pin(p).value
-    mcp_control.clear_ints()
-    for c in button_mcps:
-        for i in range(c["count"]):
-            c["pressed"][i] = not c["mcp"].get_pin(i).value
-        c["mcp"].clear_ints()
-    time.sleep(0.05)
-
-# Block spurious edges during power-on by starting debounce timers at now
+startup_time   = time.monotonic()
 ctrl_last_edge = {p: startup_time for p in CTRL_PINS}
 for c in button_mcps:
     c["last_edge"] = [startup_time] * c["count"]
+
+# ─── Startup MCP diagnostic ─────────────────────────────────────────────────
+# Read and print raw pin values so we can verify SPI comms are working.
+# All pins should read True (HIGH) when no buttons are pressed.
+print("--- MCP diagnostic ---")
+print("Control pins (expect all True when nothing pressed):")
+for p in CTRL_PINS:
+    print(f"  pin {p:2d}: {mcp_control.get_pin(p).value}")
+print("Zone MCP raw GPIO (expect 0xFFFF when nothing pressed):")
+for idx_m, c in enumerate(button_mcps):
+    try:
+        raw = c["mcp"].gpio
+        print(f"  MCP{idx_m+1}: 0x{raw:04X}")
+    except Exception as e:
+        print(f"  MCP{idx_m+1}: READ ERROR {e}")
+print("--- end diagnostic ---")
 
 # ─── Info popup state ───────────────────────────────────────────────────────
 show_info  = False
@@ -336,12 +344,21 @@ show_start = 0.0
 show_btn   = -1
 show_state = -1
 
+_last_diag = 0.0   # for periodic pin-state heartbeat in main loop
+
 print("System ready!")
 
 # ─── Main loop ──────────────────────────────────────────────────────────────
 while True:
     now        = time.monotonic()
     needs_draw = False
+
+    # Periodic heartbeat: print raw control-pin states every 3 s so we can
+    # see whether pressing a button actually changes the value on the MCP.
+    if now - _last_diag >= 3.0:
+        _last_diag = now
+        states = {p: mcp_control.get_pin(p).value for p in CTRL_PINS}
+        print(f"HEARTBEAT ctrl pins: {states}")
 
     # 1. Control buttons (navigation / training / silence)
     # Polled directly every iteration — no interrupt gate needed.
