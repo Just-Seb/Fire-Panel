@@ -43,7 +43,7 @@ room_csv = [
 STATE_NAMES = {0: "NORMAL", 1: "ALARM", 2: "TROUBLE"}
 
 # Names used in debug prints
-CTRL_NAMES = {8: "LEFT", 9: "RIGHT", 10: "ENTER", 11: "SILENCE", 12: "DOWN", 13: "UP", 15: "EYE"}
+CTRL_NAMES = {0: "LEFT", 1: "RIGHT", 2: "ENTER", 3: "SILENCE", 4: "DOWN", 5: "UP", 7: "EYE"}
 
 # ─── Global state ───────────────────────────────────────────────────────────
 button_states   = [0] * 60  # 0=normal, 1=alarm, 2=trouble
@@ -87,7 +87,7 @@ for cs_pin, int_pin, addr, count, inten in mcp_configs:
     })
     offset += count
 
-mcp_control, int_pin_control = setup_mcp(board.GP20, board.GP21, 0x00, 8, 8, 0xFF00)
+mcp_control, int_pin_control = setup_mcp(board.GP20, board.GP21, 0x00, 0, 8, 0x00FF)
 
 print("MCPs initialised")
 
@@ -308,7 +308,7 @@ menu = MenuSystem(display)
 menu.draw()
 
 # ─── Control button startup ─────────────────────────────────────────────────
-CTRL_PINS    = [8, 9, 10, 11, 12, 13, 15]
+CTRL_PINS    = [0, 1, 2, 3, 4, 5, 7]
 # Initialise all pressed states to False — do NOT read from hardware here.
 # Reading hardware at startup can return garbage if the SPI bus is still
 # settling, which marks buttons as "already pressed" and blocks edge detection.
@@ -373,33 +373,33 @@ while True:
                 name = CTRL_NAMES.get(p, str(p))
                 print(f"CTRL PRESSED  pin={p} ({name})")
 
-                if p == 13:         # UP
+                if p == 5:          # UP
                     menu.scroll_up()
                     show_info  = False
                     needs_draw = True
-                elif p == 12:       # DOWN
+                elif p == 4:        # DOWN
                     menu.scroll_down()
                     show_info  = False
                     needs_draw = True
-                elif p == 9:        # RIGHT (secondary scroll down)
+                elif p == 1:        # RIGHT (secondary scroll down)
                     menu.scroll_down()
                     show_info  = False
                     needs_draw = True
-                elif p == 10:       # ENTER
+                elif p == 2:        # ENTER
                     show_info  = False
                     menu.enter()
                     needs_draw = True
-                elif p == 8:        # LEFT → back to main
+                elif p == 0:        # LEFT → back to main
                     if menu.mode != "main":
                         menu.back_to_main()
                         show_info  = False
                         needs_draw = True
-                elif p == 11:       # SILENCE
+                elif p == 3:        # SILENCE
                     buzzer_silenced = not buzzer_silenced
                     if buzzer_silenced:
                         buzzer.value = False
                     print(f"  Buzzer {'silenced' if buzzer_silenced else 're-enabled'}")
-                elif p == 15:       # EYE → toggle training mode
+                elif p == 7:        # EYE → toggle training mode
                     training_mode = not training_mode
                     print(f"  Training mode {'ON' if training_mode else 'OFF'}")
                     needs_draw = True
