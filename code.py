@@ -62,11 +62,12 @@ def setup_mcp(cs_pin, int_pin, addr, start_pin, count, interrupt_enable):
     # The constructor never raises even if no chip is present.
     mcp.iodira = 0x55
     readback = mcp.iodira
-    if readback == 0x55:
+    spi_ok = (readback == 0x55)
+    if spi_ok:
         print(f"  MCP cs={cs_pin} addr=0x{addr:02X}: SPI OK")
     else:
         print(f"  MCP cs={cs_pin} addr=0x{addr:02X}: SPI FAIL "
-              f"(wrote 0x55, got 0x{readback:02X}) — check wiring/RESET/power")
+              f"(wrote 0x55, got 0x{readback:02X}) — check RESET pin & MISO wire")
     mcp.iodira = 0xFF  # restore all-input
 
     int_p = digitalio.DigitalInOut(int_pin)
@@ -80,7 +81,7 @@ def setup_mcp(cs_pin, int_pin, addr, start_pin, count, interrupt_enable):
     mcp.default_value = 0xFFFF
     mcp.io_control = 0x40
     mcp.clear_ints()
-    return mcp, int_p
+    return mcp, int_p, spi_ok
 
 mcp_configs = [
     (board.GP17, board.GP15, 0x00, 16, 0xFFFF),  # MCP 1
@@ -92,14 +93,15 @@ mcp_configs = [
 button_mcps = []
 offset = 0
 for cs_pin, int_pin, addr, count, inten in mcp_configs:
-    mcp, ipin = setup_mcp(cs_pin, int_pin, addr, 0, count, inten)
+    mcp, ipin, spi_ok = setup_mcp(cs_pin, int_pin, addr, 0, count, inten)
     button_mcps.append({
         "mcp": mcp, "int": ipin, "count": count, "offset": offset,
         "pressed": [False] * count, "last_edge": [0.0] * count,
+        "spi_ok": spi_ok,
     })
     offset += count
 
-mcp_control, int_pin_control = setup_mcp(board.GP20, board.GP21, 0x00, 0, 8, 0x00FF)
+mcp_control, int_pin_control, ctrl_spi_ok = setup_mcp(board.GP20, board.GP21, 0x00, 0, 8, 0x00FF)
 
 print("MCPs initialised")
 
@@ -334,11 +336,11 @@ for c in button_mcps:
     c["last_edge"] = [startup_time] * c["count"]
 
 # ─── Startup MCP diagnostic ─────────────────────────────────────────────────
-# Expected when nothing is pressed:
-#   IODIRA = 0xFF  (all pins input)
-#   GPPUA  = 0xFF  (all pull-ups enabled)
-#   GPIO   = 0xFFFF (all pins high)
-# If any chip shows IODIRA/GPPUA != 0xFF, SPI communication is not working.
+# [OK] = readback test passed at init (wrote 0x55, read 0x55 back).
+# [SPI FAIL] = MISO floating — check RESET pin (must be 3.3V) and MISO wire.
+# NOTE: floating MISO always reads 0xFF, which coincidentally matches a
+# correctly-configured chip, so register values alone cannot distinguish
+# working from dead — only the readback flag is reliable.
 print("--- MCP diagnostic ---")
 print("Zone MCPs:")
 for idx_m, c in enumerate(button_mcps):
@@ -346,7 +348,7 @@ for idx_m, c in enumerate(button_mcps):
         iodira = c["mcp"].iodira
         gppua  = c["mcp"].gppua
         gpio   = c["mcp"].gpio
-        ok = "OK" if (iodira == 0xFF and gppua == 0xFF) else "SUSPECT"
+        ok = "OK" if c["spi_ok"] else "SPI FAIL"
         print(f"  MCP{idx_m+1}: IODIRA=0x{iodira:02X} GPPUA=0x{gppua:02X} "
               f"GPIO=0x{gpio:04X}  [{ok}]")
     except Exception as e:
@@ -356,7 +358,7 @@ try:
     iodira = mcp_control.iodira
     gppua  = mcp_control.gppua
     gpio   = mcp_control.gpio
-    ok = "OK" if (iodira == 0xFF and gppua == 0xFF) else "SUSPECT"
+    ok = "OK" if ctrl_spi_ok else "SPI FAIL"
     print(f"  CTRL:  IODIRA=0x{iodira:02X} GPPUA=0x{gppua:02X} "
           f"GPIO=0x{gpio:04X}  [{ok}]")
 except Exception as e:
