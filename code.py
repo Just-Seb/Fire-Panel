@@ -56,7 +56,19 @@ spi = busio.SPI(board.GP18, MOSI=board.GP19, MISO=board.GP16)
 
 def setup_mcp(cs_pin, int_pin, addr, start_pin, count, interrupt_enable):
     cs  = digitalio.DigitalInOut(cs_pin)
-    mcp = MCP23S17(spi, cs, address=addr)
+    mcp = MCP23S17(spi, cs, address=addr, baudrate=500_000)
+
+    # Write-readback: only reliable way to confirm the chip is alive over SPI.
+    # The constructor never raises even if no chip is present.
+    mcp.iodira = 0x55
+    readback = mcp.iodira
+    if readback == 0x55:
+        print(f"  MCP cs={cs_pin} addr=0x{addr:02X}: SPI OK")
+    else:
+        print(f"  MCP cs={cs_pin} addr=0x{addr:02X}: SPI FAIL "
+              f"(wrote 0x55, got 0x{readback:02X}) — check wiring/RESET/power")
+    mcp.iodira = 0xFF  # restore all-input
+
     int_p = digitalio.DigitalInOut(int_pin)
     int_p.direction = digitalio.Direction.INPUT
     for i in range(start_pin, start_pin + count):
@@ -72,9 +84,9 @@ def setup_mcp(cs_pin, int_pin, addr, start_pin, count, interrupt_enable):
 
 mcp_configs = [
     (board.GP17, board.GP15, 0x00, 16, 0xFFFF),  # MCP 1
-    (board.GP28, board.GP14, 0x01, 14, 0x3FFF),  # MCP 2
+    (board.GP28, board.GP14, 0x00, 14, 0x3FFF),  # MCP 2  (was 0x01, all chips are 0x00)
     (board.GP7,  board.GP9,  0x00, 16, 0xFFFF),  # MCP 3
-    (board.GP12, board.GP8,  0x01, 14, 0x3FFF),  # MCP 4
+    (board.GP12, board.GP8,  0x00, 14, 0x3FFF),  # MCP 4  (was 0x01, all chips are 0x00)
 ]
 
 button_mcps = []
@@ -322,19 +334,33 @@ for c in button_mcps:
     c["last_edge"] = [startup_time] * c["count"]
 
 # ─── Startup MCP diagnostic ─────────────────────────────────────────────────
-# Read and print raw pin values so we can verify SPI comms are working.
-# All pins should read True (HIGH) when no buttons are pressed.
+# Expected when nothing is pressed:
+#   IODIRA = 0xFF  (all pins input)
+#   GPPUA  = 0xFF  (all pull-ups enabled)
+#   GPIO   = 0xFFFF (all pins high)
+# If any chip shows IODIRA/GPPUA != 0xFF, SPI communication is not working.
 print("--- MCP diagnostic ---")
-print("Control pins (expect all True when nothing pressed):")
-for p in CTRL_PINS:
-    print(f"  pin {p:2d}: {mcp_control.get_pin(p).value}")
-print("Zone MCP raw GPIO (expect 0xFFFF when nothing pressed):")
+print("Zone MCPs:")
 for idx_m, c in enumerate(button_mcps):
     try:
-        raw = c["mcp"].gpio
-        print(f"  MCP{idx_m+1}: 0x{raw:04X}")
+        iodira = c["mcp"].iodira
+        gppua  = c["mcp"].gppua
+        gpio   = c["mcp"].gpio
+        ok = "OK" if (iodira == 0xFF and gppua == 0xFF) else "SUSPECT"
+        print(f"  MCP{idx_m+1}: IODIRA=0x{iodira:02X} GPPUA=0x{gppua:02X} "
+              f"GPIO=0x{gpio:04X}  [{ok}]")
     except Exception as e:
         print(f"  MCP{idx_m+1}: READ ERROR {e}")
+print("Control MCP:")
+try:
+    iodira = mcp_control.iodira
+    gppua  = mcp_control.gppua
+    gpio   = mcp_control.gpio
+    ok = "OK" if (iodira == 0xFF and gppua == 0xFF) else "SUSPECT"
+    print(f"  CTRL:  IODIRA=0x{iodira:02X} GPPUA=0x{gppua:02X} "
+          f"GPIO=0x{gpio:04X}  [{ok}]")
+except Exception as e:
+    print(f"  CTRL:  READ ERROR {e}")
 print("--- end diagnostic ---")
 
 # ─── Info popup state ───────────────────────────────────────────────────────
