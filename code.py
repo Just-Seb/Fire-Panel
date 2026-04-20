@@ -385,8 +385,9 @@ while True:
     # see whether pressing a button actually changes the value on the MCP.
     if now - _last_diag >= 3.0:
         _last_diag = now
+        raw = mcp_control.gpio  # full 16-bit read: bits 0-7 = port A, bits 8-15 = port B
         states = {p: mcp_control.get_pin(p).value for p in CTRL_PINS}
-        print(f"HEARTBEAT ctrl pins: {states}")
+        print(f"HEARTBEAT raw=0x{raw:04X}  portA=0x{raw & 0xFF:02X}  portB=0x{(raw >> 8) & 0xFF:02X}  pins={states}")
 
     # 1. Control buttons (navigation / training / silence)
     # Polled directly every iteration — no interrupt gate needed.
