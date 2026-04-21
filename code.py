@@ -58,16 +58,20 @@ def setup_mcp(cs_pin, int_pin, addr, start_pin, count, interrupt_enable):
     cs  = digitalio.DigitalInOut(cs_pin)
     mcp = MCP23S17(spi, cs, address=addr, baudrate=500_000)
 
-    # Write-readback: only reliable way to confirm the chip is alive over SPI.
-    # The constructor never raises even if no chip is present.
-    mcp.iodira = 0x55
-    readback = mcp.iodira
-    spi_ok = (readback == 0x55)
+    # Write-readback with two complementary patterns. A floating MISO always
+    # returns 0xFF, so it cannot satisfy both 0x55 and 0xAA simultaneously —
+    # eliminating any chance of a false positive from a single-pattern check.
+    spi_ok = True
+    for pattern in (0x55, 0xAA, 0xA5):
+        mcp.iodira = pattern
+        rb = mcp.iodira
+        if rb != pattern:
+            spi_ok = False
+            print(f"  MCP cs={cs_pin} addr=0x{addr:02X}: SPI FAIL "
+                  f"(wrote 0x{pattern:02X}, got 0x{rb:02X}) — check RESET pin & MISO wire")
+            break
     if spi_ok:
         print(f"  MCP cs={cs_pin} addr=0x{addr:02X}: SPI OK")
-    else:
-        print(f"  MCP cs={cs_pin} addr=0x{addr:02X}: SPI FAIL "
-              f"(wrote 0x55, got 0x{readback:02X}) — check RESET pin & MISO wire")
     mcp.iodira = 0xFF  # restore all-input
 
     int_p = digitalio.DigitalInOut(int_pin)
