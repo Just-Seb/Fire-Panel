@@ -43,7 +43,7 @@ room_csv = [
 STATE_NAMES = {0: "NORMAL", 1: "ALARM", 2: "TROUBLE"}
 
 # Names used in debug prints
-CTRL_NAMES = {0: "LEFT", 1: "RIGHT", 2: "ENTER", 3: "SILENCE", 4: "DOWN", 5: "UP", 7: "EYE"}
+CTRL_NAMES = {8: "LEFT", 9: "RIGHT", 10: "ENTER", 11: "SILENCE", 12: "DOWN", 13: "UP", 15: "EYE"}
 
 # ─── Global state ───────────────────────────────────────────────────────────
 button_states   = [0] * 60  # 0=normal, 1=alarm, 2=trouble
@@ -105,7 +105,7 @@ for cs_pin, int_pin, addr, count, inten in mcp_configs:
     })
     offset += count
 
-mcp_control, int_pin_control, ctrl_spi_ok = setup_mcp(board.GP20, board.GP21, 0x00, 0, 8, 0x00FF)
+mcp_control, int_pin_control, ctrl_spi_ok = setup_mcp(board.GP20, board.GP21, 0x00, 8, 8, 0xFF00)
 
 print("MCPs initialised")
 
@@ -326,7 +326,7 @@ menu = MenuSystem(display)
 menu.draw()
 
 # ─── Control button startup ─────────────────────────────────────────────────
-CTRL_PINS    = [0, 1, 2, 3, 4, 5, 7]
+CTRL_PINS    = [8, 9, 10, 11, 12, 13, 15]
 # Initialise all pressed states to False — do NOT read from hardware here.
 # Reading hardware at startup can return garbage if the SPI bus is still
 # settling, which marks buttons as "already pressed" and blocks edge detection.
