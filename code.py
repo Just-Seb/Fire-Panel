@@ -139,7 +139,7 @@ def update_main_pixels():
     main_pixels[0] = status
     main_pixels[1] = status
     main_pixels[2] = status
-    main_pixels[9] = (255, 0, 0) if any_spi_error else (0, 0, 0)
+    main_pixels[8] = (255, 0, 0) if any_spi_error else (0, 0, 0)
     main_pixels.show()
 
 def update_leds():
