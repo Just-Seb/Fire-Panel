@@ -98,10 +98,21 @@ mcp_configs = [
     (board.GP12, board.GP8,  0x00, 14, 0x3FFF),  # MCP 4  INT→GP8
 ]
 
+def _diag_mcp(label, mcp, spi_ok):
+    try:
+        iodira = mcp.iodira
+        gppua  = mcp.gppua
+        gpio   = mcp.gpio
+        ok = "OK" if spi_ok else "SPI FAIL"
+        print(f"  {label}: IODIRA=0x{iodira:02X} GPPUA=0x{gppua:02X} GPIO=0x{gpio:04X}  [{ok}]")
+    except Exception as e:
+        print(f"  {label}: READ ERROR {e}")
+
 button_mcps = []
 offset = 0
-for cs_pin, int_pin, addr, count, inten in mcp_configs:
+for idx, (cs_pin, int_pin, addr, count, inten) in enumerate(mcp_configs):
     mcp, ipin, spi_ok = setup_mcp(cs_pin, int_pin, addr, 0, count, inten)
+    _diag_mcp(f"MCP{idx + 1}", mcp, spi_ok)
     button_mcps.append({
         "mcp": mcp, "int": ipin, "count": count, "offset": offset,
         "pressed": [False] * count, "last_edge": [0.0] * count,
@@ -110,6 +121,7 @@ for cs_pin, int_pin, addr, count, inten in mcp_configs:
     offset += count
 
 mcp_control, int_pin_control, ctrl_spi_ok = setup_mcp(board.GP20, board.GP21, 0x00, 8, 8, 0xFF00)
+_diag_mcp("CTRL", mcp_control, ctrl_spi_ok)
 any_spi_error = not ctrl_spi_ok or any(not c["spi_ok"] for c in button_mcps)
 
 print("MCPs initialised")
@@ -359,36 +371,6 @@ startup_time   = time.monotonic()
 ctrl_last_edge = {p: startup_time for p in CTRL_PINS}
 for c in button_mcps:
     c["last_edge"] = [startup_time] * c["count"]
-
-# ─── Startup MCP diagnostic ─────────────────────────────────────────────────
-# [OK] = readback test passed at init (wrote 0x55, read 0x55 back).
-# [SPI FAIL] = MISO floating — check RESET pin (must be 3.3V) and MISO wire.
-# NOTE: floating MISO always reads 0xFF, which coincidentally matches a
-# correctly-configured chip, so register values alone cannot distinguish
-# working from dead — only the readback flag is reliable.
-print("--- MCP diagnostic ---")
-print("Zone MCPs:")
-for idx_m, c in enumerate(button_mcps):
-    try:
-        iodira = c["mcp"].iodira
-        gppua  = c["mcp"].gppua
-        gpio   = c["mcp"].gpio
-        ok = "OK" if c["spi_ok"] else "SPI FAIL"
-        print(f"  MCP{idx_m+1}: IODIRA=0x{iodira:02X} GPPUA=0x{gppua:02X} "
-              f"GPIO=0x{gpio:04X}  [{ok}]")
-    except Exception as e:
-        print(f"  MCP{idx_m+1}: READ ERROR {e}")
-print("Control MCP:")
-try:
-    iodira = mcp_control.iodira
-    gppua  = mcp_control.gppua
-    gpio   = mcp_control.gpio
-    ok = "OK" if ctrl_spi_ok else "SPI FAIL"
-    print(f"  CTRL:  IODIRA=0x{iodira:02X} GPPUA=0x{gppua:02X} "
-          f"GPIO=0x{gpio:04X}  [{ok}]")
-except Exception as e:
-    print(f"  CTRL:  READ ERROR {e}")
-print("--- end diagnostic ---")
 
 # ─── Info popup state ───────────────────────────────────────────────────────
 show_info  = False
