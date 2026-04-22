@@ -98,21 +98,49 @@ mcp_configs = [
     (board.GP12, board.GP8,  0x00, 14, 0x3FFF),  # MCP 4  INT→GP8
 ]
 
-def _diag_mcp(label, mcp, spi_ok):
+def _diag_mcp(label, mcp, spi_ok, start_pin, count, interrupt_enable):
+    # Compute expected register values from the same parameters used in setup_mcp.
+    pins      = set(range(start_pin, start_pin + count))
+    exp_gppua = sum(1 << i       for i in range(8)     if i in pins)
+    exp_gppub = sum(1 << (i - 8) for i in range(8, 16) if i in pins)
+    expected  = {
+        "IODIRA": (0xFF, 2), "IODIRB": (0xFF, 2),
+        "GPPUA":  (exp_gppua, 2), "GPPUB": (exp_gppub, 2),
+        "INTEN":  (interrupt_enable, 4),
+        "DEFVAL": (0xFFFF, 4), "INTCON": (0x0000, 4),
+        "IOCON":  (0x40, 2),
+    }
     try:
-        iodira = mcp.iodira
-        gppua  = mcp.gppua
-        gpio   = mcp.gpio
-        ok = "OK" if spi_ok else "SPI FAIL"
-        print(f"  {label}: IODIRA=0x{iodira:02X} GPPUA=0x{gppua:02X} GPIO=0x{gpio:04X}  [{ok}]")
+        actual = {
+            "IODIRA": mcp.iodira,  "IODIRB": mcp.iodirb,
+            "GPPUA":  mcp.gppua,   "GPPUB":  mcp.gppub,
+            "INTEN":  mcp.interrupt_enable,
+            "DEFVAL": mcp.default_value,
+            "INTCON": mcp.interrupt_configuration,
+            "IOCON":  mcp.io_control,
+            "GPIO":   mcp.gpio,
+        }
     except Exception as e:
         print(f"  {label}: READ ERROR {e}")
+        return
+
+    reg_ok  = all(actual[k] == v for k, (v, _) in expected.items())
+    overall = "OK" if (spi_ok and reg_ok) else "FAIL"
+
+    parts = []
+    for k, (exp, w) in expected.items():
+        got = actual[k]
+        tag = f"0x{got:0{w}X}" if got == exp else f"0x{got:0{w}X}(exp 0x{exp:0{w}X})!"
+        parts.append(f"{k}={tag}")
+    parts.append(f"GPIO=0x{actual['GPIO']:04X}")
+
+    print(f"  {label} [{overall}]: " + "  ".join(parts))
 
 button_mcps = []
 offset = 0
 for idx, (cs_pin, int_pin, addr, count, inten) in enumerate(mcp_configs):
     mcp, ipin, spi_ok = setup_mcp(cs_pin, int_pin, addr, 0, count, inten)
-    _diag_mcp(f"MCP{idx + 1}", mcp, spi_ok)
+    _diag_mcp(f"MCP{idx + 1}", mcp, spi_ok, 0, count, inten)
     button_mcps.append({
         "mcp": mcp, "int": ipin, "count": count, "offset": offset,
         "pressed": [False] * count, "last_edge": [0.0] * count,
@@ -121,7 +149,7 @@ for idx, (cs_pin, int_pin, addr, count, inten) in enumerate(mcp_configs):
     offset += count
 
 mcp_control, int_pin_control, ctrl_spi_ok = setup_mcp(board.GP20, board.GP21, 0x00, 8, 8, 0xFF00)
-_diag_mcp("CTRL", mcp_control, ctrl_spi_ok)
+_diag_mcp("CTRL", mcp_control, ctrl_spi_ok, 8, 8, 0xFF00)
 any_spi_error = not ctrl_spi_ok or any(not c["spi_ok"] for c in button_mcps)
 
 print("MCPs initialised")
