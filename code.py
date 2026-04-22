@@ -83,15 +83,19 @@ def setup_mcp(cs_pin, int_pin, addr, start_pin, count, interrupt_enable):
     mcp.interrupt_enable = interrupt_enable
     mcp.interrupt_configuration = 0x0000
     mcp.default_value = 0xFFFF
+    # MIRROR=1 (bit 6): INTA mirrors INTB so a single INT wire per chip
+    # carries interrupts from both port A and port B.
     mcp.io_control = 0x40
     mcp.clear_ints()
     return mcp, int_p, spi_ok
 
+# Each MCP has its own dedicated INT line to the RP2040.
+# Only INTA is wired; MIRROR (IOCON bit 6) makes INTA reflect both ports.
 mcp_configs = [
-    (board.GP17, board.GP15, 0x00, 16, 0xFFFF),  # MCP 1
-    (board.GP28, board.GP14, 0x00, 14, 0x3FFF),  # MCP 2  (was 0x01, all chips are 0x00)
-    (board.GP7,  board.GP9,  0x00, 16, 0xFFFF),  # MCP 3
-    (board.GP12, board.GP8,  0x00, 14, 0x3FFF),  # MCP 4  (was 0x01, all chips are 0x00)
+    (board.GP17, board.GP15, 0x00, 16, 0xFFFF),  # MCP 1  INT→GP15
+    (board.GP28, board.GP14, 0x00, 14, 0x3FFF),  # MCP 2  INT→GP14
+    (board.GP7,  board.GP9,  0x00, 16, 0xFFFF),  # MCP 3  INT→GP9
+    (board.GP12, board.GP8,  0x00, 14, 0x3FFF),  # MCP 4  INT→GP8
 ]
 
 button_mcps = []
