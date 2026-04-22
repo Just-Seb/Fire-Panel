@@ -406,33 +406,33 @@ while True:
                 name = CTRL_NAMES.get(p, str(p))
                 print(f"CTRL PRESSED  pin={p} ({name})")
 
-                if p == 5:          # UP
+                if p == 13:         # UP
                     menu.scroll_up()
                     show_info  = False
                     needs_draw = True
-                elif p == 4:        # DOWN
+                elif p == 12:       # DOWN
                     menu.scroll_down()
                     show_info  = False
                     needs_draw = True
-                elif p == 1:        # RIGHT (secondary scroll down)
+                elif p == 9:        # RIGHT (secondary scroll down)
                     menu.scroll_down()
                     show_info  = False
                     needs_draw = True
-                elif p == 2:        # ENTER
+                elif p == 10:       # ENTER
                     show_info  = False
                     menu.enter()
                     needs_draw = True
-                elif p == 0:        # LEFT → back to main
+                elif p == 8:        # LEFT → back to main
                     if menu.mode != "main":
                         menu.back_to_main()
                         show_info  = False
                         needs_draw = True
-                elif p == 3:        # SILENCE
+                elif p == 11:       # SILENCE
                     buzzer_silenced = not buzzer_silenced
                     if buzzer_silenced:
                         buzzer.value = False
                     print(f"  Buzzer {'silenced' if buzzer_silenced else 're-enabled'}")
-                elif p == 7:        # EYE → toggle training mode
+                elif p == 15:       # EYE → toggle training mode
                     training_mode = not training_mode
                     print(f"  Training mode {'ON' if training_mode else 'OFF'}")
                     needs_draw = True
