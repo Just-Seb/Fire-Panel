@@ -106,6 +106,7 @@ for cs_pin, int_pin, addr, count, inten in mcp_configs:
     offset += count
 
 mcp_control, int_pin_control, ctrl_spi_ok = setup_mcp(board.GP20, board.GP21, 0x00, 8, 8, 0xFF00)
+any_spi_error = not ctrl_spi_ok or any(not c["spi_ok"] for c in button_mcps)
 
 print("MCPs initialised")
 
@@ -128,6 +129,19 @@ _test_pixels(trouble_pixels, (255, 165, 0), 60)
 main_pixels.show(); alarm_pixels.show(); trouble_pixels.show()
 print("NeoPixel test complete!")
 
+def update_main_pixels():
+    if any(s == 1 for s in button_states):
+        status = (255, 0, 0)        # red — any alarm
+    elif any(s == 2 for s in button_states):
+        status = (255, 165, 0)      # yellow — troubles only, no alarms
+    else:
+        status = (0, 0, 0)
+    main_pixels[0] = status
+    main_pixels[1] = status
+    main_pixels[2] = status
+    main_pixels[9] = (255, 0, 0) if any_spi_error else (0, 0, 0)
+    main_pixels.show()
+
 def update_leds():
     for i in range(60):
         target_idx = 29 - i if i < 30 else 89 - i
@@ -136,6 +150,9 @@ def update_leds():
         trouble_pixels[target_idx] = (255, 165, 0)  if state == 2 else (0, 0, 0)
     alarm_pixels.show()
     trouble_pixels.show()
+    update_main_pixels()
+
+update_main_pixels()  # set initial control LED state after boot
 
 # ─── Buzzer ─────────────────────────────────────────────────────────────────
 buzzer = digitalio.DigitalInOut(board.GP26)
