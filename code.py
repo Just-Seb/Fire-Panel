@@ -55,8 +55,10 @@ alarms_cleared  = True
 spi = busio.SPI(board.GP18, MOSI=board.GP19, MISO=board.GP16)
 
 def setup_mcp(cs_pin, int_pin, addr, start_pin, count, interrupt_enable):
-    cs  = digitalio.DigitalInOut(cs_pin)
-    mcp = MCP23S17(spi, cs, address=addr, baudrate=500_000)
+    cs           = digitalio.DigitalInOut(cs_pin)
+    cs.direction = digitalio.Direction.OUTPUT
+    cs.value     = True   # hold CS deasserted before touching the SPI bus
+    mcp = MCP23S17(spi, cs, address=addr, baudrate=100_000)
 
     # Write-readback with two complementary patterns. A floating MISO always
     # returns 0xFF, so it cannot satisfy both 0x55 and 0xAA simultaneously —
